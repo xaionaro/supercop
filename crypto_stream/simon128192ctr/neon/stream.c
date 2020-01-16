@@ -19,6 +19,14 @@
 #include <stdlib.h>
 #include "Simon128192NEON.h"
 
+int crypto_stream_simon128192ctr_neon(unsigned char *out, unsigned long long outlen, const unsigned char *n, const unsigned char *k);
+inline __attribute__((always_inline)) int Encrypt(unsigned char *out, u64 nonce[], u128 rk[][8], u64 key[], int numbytes);
+int crypto_stream_simon128192ctr_neon_xor(unsigned char *out, const unsigned char *in, unsigned long long inlen, const unsigned char *n, const unsigned char *k);
+inline __attribute__((always_inline)) int Encrypt_Xor(unsigned char *out, const unsigned char *in, u64 nonce[], u128 rk[][8], u64 key[], int numbytes);
+int ExpandKeyBS(u64 K[], u128 rk[][8]);
+int ExpandKeyNBS(u64 K[], u128 rk[][8], u64 key[]);
+
+
 
 int crypto_stream_simon128192ctr_neon(
   unsigned char *out,
@@ -27,10 +35,10 @@ int crypto_stream_simon128192ctr_neon(
   const unsigned char *k
 )
 {
-  int i;
-  u64 nonce[2], K[4], key[72],x,y;
+  u32 i;
+  u64 nonce[2], K[4], key[72];
   unsigned char block[16];
-  u128 rk[72];
+  u128 rk[72][8];
 
   if (!outlen) return 0;
 
@@ -39,19 +47,20 @@ int crypto_stream_simon128192ctr_neon(
 
   for(i=0;i<numkeywords;i++) K[i]=((u64 *)k)[i];
 
-  ExpandKey(K,rk,key);
+  if (outlen>=4096){
+    ExpandKeyBS(K,rk);
 
-  if (outlen<=16){
-    x=nonce[1]; y=nonce[0]++;
-    for(i=0;i<68;i+=2) R2(x,y,key[i],key[i+1]);
-    R1(x,y,key[68]);
-    ((u64 *)block)[1]=y; ((u64 *)block)[0]=x;
-    for(i=0;i<outlen;i++) out[i]=block[i];
-
-    return 0;
+    while(outlen>=256){
+      Encrypt(out,nonce,rk,key,256);
+      out+=256; outlen-=256;
+    }
   }
 
-  while(outlen>=128){
+  if (!outlen) return 0;
+
+  ExpandKeyNBS(K,rk,key);
+
+  while (outlen>=128){
     Encrypt(out,nonce,rk,key,128);
     out+=128; outlen-=128;
   }
@@ -86,43 +95,56 @@ int crypto_stream_simon128192ctr_neon(
 
 
 
-int Encrypt(unsigned char *out, u64 nonce[], u128 rk[], u64 key[], int numbytes)
+inline __attribute__((always_inline)) int Encrypt(unsigned char *out, u64 nonce[], u128 rk[][8], u64 key[], int numbytes)
 {
-  u64  x[2],y[2];
-  u128 X[4],Y[4],Z[4];
+  u32 i;
+  u64  x[4],y[4];
+  u128 X[8],Y[8],W[4];
+
 
   if (numbytes==16){
     x[0]=nonce[1]; y[0]=nonce[0]++;
     Enc(x,y,key,1);
-    ((u64 *)out)[1]=x[0]; ((u64 *)out)[0]=y[0];
+    ((u64 *)out)[1]=y[0]; ((u64 *)out)[0]=x[0];
 
     return 0;
   }
 
-  SET1(X[0],nonce[1]);
-  SET2(Y[0],nonce[0]);
+  SET1(X[0],nonce[1]); SET2(Y[0],nonce[0]);
 
-  if (numbytes==32) Enc(X,Y,rk,2);
+  if (numbytes==32) {for(i=0;i<68;i+=2) R2x2(X,Y,rk,i,i+1); R1x2(X,Y,rk,68);}
   else{
-    X[1]=X[0];
-    SET2(Y[1],nonce[0]);
-    if (numbytes==64) Enc(X,Y,rk,4);
+    X[1]=X[0]; SET2(Y[1],nonce[0]);
+    if (numbytes==64) {for(i=0;i<68;i+=2) R2x4(X,Y,rk,i,i+1); R1x4(X,Y,rk,68);}
     else{
-      X[2]=X[0];
-      SET2(Y[2],nonce[0]);
-      if (numbytes==96) Enc(X,Y,rk,6);
+      X[2]=X[0]; SET2(Y[2],nonce[0]);
+      if (numbytes==96) {for(i=0;i<68;i+=2) R2x6(X,Y,rk,i,i+1); R1x6(X,Y,rk,68);}
       else{
-        X[3]=X[0];
-	SET2(Y[3],nonce[0]);
-        Enc(X,Y,rk,8);
+        X[3]=X[0]; SET2(Y[3],nonce[0]);
+        if (numbytes==128) {for(i=0;i<68;i+=2) R2x8(X,Y,rk,i,i+1); R1x8(X,Y,rk,68);}
+        else{
+          X[4]=X[0]; SET2(Y[4],nonce[0]);
+          X[5]=X[0]; SET2(Y[5],nonce[0]);
+          X[6]=X[0]; SET2(Y[6],nonce[0]);
+          X[7]=X[0]; SET2(Y[7],nonce[0]);
+          Transpose(X); Transpose(Y);
+          for(i=0;i<68;i+=2) R2x16(X,Y,rk,i,i+1); R1x16(X,Y,rk,68);
+          Transpose(X); Transpose(Y);
+        }
       }
     }
   }
 
-  STORE(out,X[0],Y[0]);
-  if (numbytes>=64)  STORE(out+32,X[1],Y[1]);
-  if (numbytes>=96)  STORE(out+64,X[2],Y[2]);
-  if (numbytes>=128) STORE(out+96,X[3],Y[3]);
+  STORE(out,Y[0],X[0]);
+  if (numbytes>=64)  STORE(out+32,Y[1],X[1]);
+  if (numbytes>=96)  STORE(out+64,Y[2],X[2]);
+  if (numbytes>=128) STORE(out+96,Y[3],X[3]);
+  if (numbytes>=256){
+    STORE(out+128,Y[4],X[4]);
+    STORE(out+160,Y[5],X[5]);
+    STORE(out+192,Y[6],X[6]);
+    STORE(out+224,Y[7],X[7]);
+  }
 
   return 0;
 }
@@ -137,10 +159,11 @@ int crypto_stream_simon128192ctr_neon_xor(
   const unsigned char *k
 )
 {
-  int i;
-  u64 nonce[2],K[4],key[72],x,y;
+  u32 i;
+  u64 nonce[2],K[4],key[72];
   unsigned char block[16];
-  u128 rk[72];
+  u64 * const block64 = (u64 *)block;
+  u128 rk[72][8];
 
   if (!inlen) return 0;
 
@@ -149,19 +172,20 @@ int crypto_stream_simon128192ctr_neon_xor(
 
   for(i=0;i<numkeywords;i++) K[i]=((u64 *)k)[i];
 
-  ExpandKey(K,rk,key);
+  if (inlen>=4096){
+    ExpandKeyBS(K,rk);
 
-  if (inlen<=16){
-    x=nonce[1]; y=nonce[0]++;
-    for(i=0;i<68;i+=2) R2(x,y,key[i],key[i+1]);
-    R1(x,y,key[68]);
-    ((u64 *)block)[1]=y; ((u64 *)block)[0]=x;
-    for(i=0;i<inlen;i++) out[i]=block[i]^in[i];
-
-    return 0;
+    while(inlen>=256){
+      Encrypt_Xor(out,in,nonce,rk,key,256);
+      in+=256; inlen-=256; out+=256;
+    }
   }
 
-  while(inlen>=128){
+  if (!inlen) return 0;
+
+  ExpandKeyNBS(K,rk,key);
+
+  while (inlen>=128){
     Encrypt_Xor(out,in,nonce,rk,key,128);
     in+=128; inlen-=128; out+=128;
   }
@@ -183,8 +207,8 @@ int crypto_stream_simon128192ctr_neon_xor(
 
   if (inlen>=16){
     Encrypt_Xor(block,in,nonce,rk,key,16);
-    ((u64 *)out)[0]=((u64 *)block)[0]^((u64 *)in)[0];
-    ((u64 *)out)[1]=((u64 *)block)[1]^((u64 *)in)[1];
+    ((u64 *)out)[0]=block64[0]^((u64 *)in)[0];
+    ((u64 *)out)[1]=block64[1]^((u64 *)in)[1];
     in+=16; inlen-=16; out+=16;
   }
 
@@ -198,54 +222,86 @@ int crypto_stream_simon128192ctr_neon_xor(
 
 
 
-int Encrypt_Xor(unsigned char *out, unsigned char *in, u64 nonce[], u128 rk[], u64 key[], int numbytes)
+inline __attribute__((always_inline)) int Encrypt_Xor(unsigned char *out, const unsigned char *in, u64 nonce[], u128 rk[][8], u64 key[], int numbytes)
 {
-  u64  x[2],y[2];
-  u128 X[4],Y[4],Z[4];
+  u32 i;
+  u64  x[4],y[4];
+  u128 X[8],Y[8],W[4];
+
 
   if (numbytes==16){
-    x[0]=nonce[1]; y[0]=nonce[0]; nonce[0]++;
+    x[0]=nonce[1]; y[0]=nonce[0]++;
     Enc(x,y,key,1);
-    ((u64 *)out)[1]=x[0]; ((u64 *)out)[0]=y[0];
+    ((u64 *)out)[1]=y[0]; ((u64 *)out)[0]=x[0];
 
     return 0;
   }
 
-  SET1(X[0],nonce[1]);
-  SET2(Y[0],nonce[0]);
+  SET1(X[0],nonce[1]); SET2(Y[0],nonce[0]);
 
-  if (numbytes==32) Enc(X,Y,rk,2);
+  if (numbytes==32) {for(i=0;i<68;i+=2) R2x2(X,Y,rk,i,i+1); R1x2(X,Y,rk,68);}
   else{
-    X[1]=X[0];
-    SET2(Y[1],nonce[0]);
-    if (numbytes==64) Enc(X,Y,rk,4);
+    X[1]=X[0]; SET2(Y[1],nonce[0]);
+    if (numbytes==64) {for(i=0;i<68;i+=2) R2x4(X,Y,rk,i,i+1); R1x4(X,Y,rk,68);}
     else{
-      X[2]=X[0];
-      SET2(Y[2],nonce[0]);
-      if (numbytes==96) Enc(X,Y,rk,6);
+      X[2]=X[0]; SET2(Y[2],nonce[0]);
+      if (numbytes==96) {for(i=0;i<68;i+=2) R2x6(X,Y,rk,i,i+1); R1x6(X,Y,rk,68);}
       else{
-        X[3]=X[0];
-	SET2(Y[3],nonce[0]);
-        Enc(X,Y,rk,8);
+        X[3]=X[0]; SET2(Y[3],nonce[0]);
+        if (numbytes==128) {for(i=0;i<68;i+=2) R2x8(X,Y,rk,i,i+1); R1x8(X,Y,rk,68);}
+        else{
+          X[4]=X[0]; SET2(Y[4],nonce[0]);
+          X[5]=X[0]; SET2(Y[5],nonce[0]);
+          X[6]=X[0]; SET2(Y[6],nonce[0]);
+          X[7]=X[0]; SET2(Y[7],nonce[0]);
+          Transpose(X); Transpose(Y);
+          for(i=0;i<68;i+=2) R2x16(X,Y,rk,i,i+1); R1x16(X,Y,rk,68);
+          Transpose(X); Transpose(Y);
+        }
       }
     }
   }
 
-  XOR_STORE(in,out,X[0],Y[0]);
-  if (numbytes>=64)  XOR_STORE(in+32,out+32,X[1],Y[1]);
-  if (numbytes>=96)  XOR_STORE(in+64,out+64,X[2],Y[2]);
-  if (numbytes>=128) XOR_STORE(in+96,out+96,X[3],Y[3]);
+  XOR_STORE(in,out,Y[0],X[0]);
+  if (numbytes>=64)  XOR_STORE(in+32,out+32,Y[1],X[1]);
+  if (numbytes>=96)  XOR_STORE(in+64,out+64,Y[2],X[2]);
+  if (numbytes>=128) XOR_STORE(in+96,out+96,Y[3],X[3]);
+  if (numbytes>=256){
+    XOR_STORE(in+128,out+128,Y[4],X[4]);
+    XOR_STORE(in+160,out+160,Y[5],X[5]);
+    XOR_STORE(in+192,out+192,Y[6],X[6]);
+    XOR_STORE(in+224,out+224,Y[7],X[7]);
+  }
+
+  return 0;
+}
+
+
+int ExpandKeyBS(u64 K[],u128 rk[][8])
+{
+  int i,j;
+  u128 W[4];
+
+  for(i=0;i<3;i++){
+    SET1(rk[i][0],K[i]);
+    for(j=1;j<8;j++){
+      rk[i][j]=rk[i][0];
+    }
+    Transpose(rk[i]);
+  }
+
+  EKBS(rk);
 
   return 0;
 }
 
 
 
-int ExpandKey(u64 K[], u128 rk[], u64 key[])
+int ExpandKeyNBS(u64 K[], u128 rk[][8], u64 key[])
 {
-  u64 A=K[0], B=K[1], C=K[2], D=K[3];
+  u64 A=K[0], B=K[1], C=K[2];
 
-  EK(A,B,C,D,rk,key);
+  EKNBS(A,B,C,rk,key);
 
   return 0;
 }

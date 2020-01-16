@@ -1,8 +1,8 @@
 //Some definitions using AVX2 intriniscs.  This file
-//is used for all of our AVX2 implementations of Simon 
+//is used for all of our AVX2 implementations of Simon
 //and Speck with 128-bit block sizes.
 
-#include <x86intrin.h>
+#include <immintrin.h>
 
 
 #define u32 unsigned
@@ -12,15 +12,18 @@
 #define LCS(x,r) (((x)<<r)|((x)>>(64-r)))
 #define RCS(x,r) (((x)>>r)|((x)<<(64-r)))
 
-#define XOR _mm256_xor_si256  
-#define AND _mm256_and_si256   
+#define XOR _mm256_xor_si256
+#define AND _mm256_and_si256
 #define ADD _mm256_add_epi64
 #define SL  _mm256_slli_epi64
-#define SR  _mm256_srli_epi64 
+#define SR  _mm256_srli_epi64
+
+#define _q SET(0x3,0x1,0x2,0x0)
+#define _four SET(0x4,0x4,0x4,0x4)
 
 #define SET _mm256_set_epi64x
 #define SET1(X,c) (X=SET(c,c,c,c))
-#define SET4(X,c) (X=SET(c+3,c+1,c+2,c), c+=4)
+#define SET4(X,c) (X=SET(c,c,c,c), X=ADD(X,_q))
 
 #define LOW  _mm256_unpacklo_epi64
 #define HIGH _mm256_unpackhi_epi64
@@ -28,6 +31,7 @@
 #define ST(ip,X) _mm256_storeu_si256((__m256i *)(ip),X)
 #define STORE(out,X,Y) (ST(out,LOW(Y,X)), ST(out+32,HIGH(Y,X)))
 #define XOR_STORE(in,out,X,Y) (ST(out,XOR(LD(in),LOW(Y,X))), ST(out+32,XOR(LD(in+32),HIGH(Y,X))))
+
 
 #define SHFL _mm256_shuffle_epi8
 #define R8 SET(0x080f0e0d0c0b0a09LL,0x0007060504030201LL,0x080f0e0d0c0b0a09LL,0x0007060504030201LL)

@@ -8,13 +8,13 @@
 
 (
   cat OPERATIONS \
-  | while read o macros prototypes
+  | while read o
   do
+    [ -d "$o" ] || continue
     ls "$o" \
     | sort \
     | while read p
     do
-      [ -d "$o" ] || continue
       okabi \
       | while read abi
       do

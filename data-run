@@ -98,8 +98,8 @@ do
 
       if [ "$t1" = integrate ]
       then
-        grep "^$t2 " OPERATIONS \
-        | while read o macros prototypes
+        grep "^$t2$" OPERATIONS \
+        | while read o
         do
           p=$t3
           [ -f "$o/$p/used" ] \
@@ -118,12 +118,22 @@ do
 
       if [ "$t1" = gmp ]
       then
-        echo "gmp 6.0.0" >&8
+        echo "gmp 6.1.2" >&8
+      fi
+  
+      if [ "$t1" = ntl ]
+      then
+        echo "ntl 11.3.2" >&8
+      fi
+  
+      if [ "$t1" = keccak ]
+      then
+        echo "keccak 20190805" >&8
       fi
   
       if [ "$t1" = cryptopp ]
       then
-        echo "cryptopp 562" >&8
+        echo "cryptopp 820" >&8
       fi
   
       if [ "$t1" = openssl ]
@@ -174,6 +184,7 @@ do
           cd "$top/$target/work"
           libs=`"oklibs-$abi"`
           libs="$top/$abi/lib/cpucycles.o $libs"
+          libs="$top/$abi/lib/kernelrandombytes.o $libs"
 	  if $compiler -D'COMPILER="'"$compiler"'"' \
             -DLOOPS=1 \
             -I. -I"$top/$abi/include" \
@@ -242,7 +253,7 @@ do
 	    echo "=== `date` === trying CC=$c CXX=$cpp CFLAGS=$copts CXXFLAGS=$cppopts ABI=$gmpabi"
 	    rm -rf "$top/$target/work"
 	    mkdir -p "$top/$target/work"
-	    cp -pr gmp-6.1.1/* "$top/$target/work"
+	    cp -pr gmp-6.1.2/* "$top/$target/work"
 	    ( cd "$top/$target/work" \
 	      && ./configure --enable-cxx \
 	         ABI="$gmpabi" \
@@ -265,6 +276,62 @@ do
       exit 0
     fi
 
+    if [ "$t1" = ntl ]
+    then
+      rm -f "$top/$abi/lib/libntl.a"
+      okcpp-$abi | head -1 \
+      | while read cpp cppopts
+      do
+        [ -s "$top/$abi/lib/libntl.a" ] && continue
+        echo "=== `date` === trying CXX=$cpp CXXFLAGS=$cppopts"
+        rm -rf "$top/$target/work"
+        mkdir -p "$top/$target/work"
+        cp -pr ntl-11.3.2/* "$top/$target/work"
+        ( cd "$top/$target/work/src" \
+          && ./configure \
+             CXX="$cpp" CXXFLAGS="$cppopts" \
+             NTL_STD_CXX11=off NTL_THREADS=off NTL_SAFE_VECTORS=off \
+             INCLUDEDIR="$top/$abi/include" LIBDIR="$top/$abi/lib" \
+             DOCDIR="$top/$target/work/installdoc" \
+             GMP_INCDIR="$top/$abi/include" GMP_LIBDIR="$top/$abi/lib" \
+          && make \
+          && make check \
+          && make install
+        ) && break || :
+      done
+      exit 0
+    fi
+
+    if [ "$t1" = keccak ]
+    then
+      rm -f "$top/$abi/lib/libkeccak.a"
+      okc-$abi | head -1 \
+      | while read c copts
+      do
+        for keccaktarget in \
+          AVR8 \
+          ARMv8A ARMv7A ARMv7M ARMv6M \
+          KnightsLanding Haswell Bulldozer SandyBridge Nehalem \
+          asmX86-64shdl asmX86-64 \
+          generic64 generic32 reference reference32bits compact
+        do
+          [ -s "$top/$abi/lib/libkeccak.a" ] && continue
+          echo "=== `date` === trying CC=$c CFLAGS=$copts TARGET=$keccaktarget"
+          rm -rf "$top/$target/work"
+          mkdir -p "$top/$target/work"
+          cp -pr k/* "$top/$target/work"
+          ( cd "$top/$target/work" \
+            && env CC="$c" CFLAGS="$copts" make $keccaktarget/libkeccak.a \
+            && mkdir -p "$top/$abi/include/libkeccak.a.headers" \
+            && cp bin/$keccaktarget/libkeccak.a.headers/* "$top/$abi/include/libkeccak.a.headers" \
+            && cp bin/$keccaktarget/libkeccak.a "$top/$abi/lib/libkeccak.a" \
+            && chmod 644 "$top/$abi/lib/libkeccak.a"
+          ) && break || :
+        done
+      done
+      exit 0
+    fi
+
     if [ "$t1" = cryptopp ]
     then
       rm -f "$top/$abi/lib/libcryptopp.a"
@@ -280,7 +347,7 @@ do
         echo "=== `date` === trying CXX=$cpp CXXFLAGS=$cppopts"
         rm -rf "$top/$target/work"
         mkdir -p "$top/$target/work"
-        cp -pr cryptopp-562/* "$top/$target/work"
+        cp -pr cryptopp-820/* "$top/$target/work"
         ( cd "$top/$target/work" \
           && make CXX="$cpp" CXXFLAGS="-DNDEBUG $cppopts" LDFLAGS="$cppopts" \
           && cp libcryptopp.a "$top/$abi/lib/libcryptopp.a" \
@@ -306,10 +373,11 @@ do
   
     if [ "$t1" = try ]
     then
-      grep "^$t4 " OPERATIONS \
-      | while read o macros prototypes
+      grep "^$t4$" OPERATIONS \
+      | while read o
       do
         rm -rf "$top/$target/CYCLES"
+        rm -rf "$top/$target/outputs"
         rm -rf "$top/$target/errors"
         rm -rf "$top/$target/work"
         rm -rf "$top/$target/compiled"
@@ -329,18 +397,43 @@ do
   
         libs=`"oklibs-$abi"`
         libs="$top/$abi/lib/cpucycles.o $libs"
-	if grep '^gmp$' "$top/$abi/implementation/$implementationdir/dep" >/dev/null
+        libs="$top/$abi/lib/kernelrandombytes.o $libs"
+	if grep '^gmp ' "$top/$abi/implementation/$implementationdir/sources" >/dev/null
 	then
           [ -f "$top/$abi/lib/libgmp.a" ] && libs="$top/$abi/lib/libgmp.a $libs"
+          [ -f "$top/$abi/lib/libgmpxx.a" ] && libs="$top/$abi/lib/libgmpxx.a $libs"
 	fi
-	if grep '^cryptopp$' "$top/$abi/implementation/$implementationdir/dep" >/dev/null
+	if grep '^ntl ' "$top/$abi/implementation/$implementationdir/sources" >/dev/null
+	then
+          [ -f "$top/$abi/lib/libntl.a" ] && libs="$top/$abi/lib/libntl.a $libs"
+	fi
+	if grep '^keccak ' "$top/$abi/implementation/$implementationdir/sources" >/dev/null
+	then
+          [ -f "$top/$abi/lib/libkeccak.a" ] && libs="$top/$abi/lib/libkeccak.a $libs"
+	fi
+	if grep '^cryptopp ' "$top/$abi/implementation/$implementationdir/sources" >/dev/null
 	then
           [ -f "$top/$abi/lib/libcryptopp.a" ] && libs="$top/$abi/lib/libcryptopp.a $libs"
 	fi
         [ -f "$top/$abi/lib/lib${project}.a" ] && libs="$top/$abi/lib/lib${project}.a $libs"
+
+	trylibs="$libs"
+	measurelibs="$libs"
+	userandombytes=0
+	[ $o = crypto_scalarmult ] && userandombytes=1
+	[ $o = crypto_box ] && userandombytes=1
+	[ $o = crypto_dh ] && userandombytes=1
+	[ $o = crypto_encrypt ] && userandombytes=1
+	[ $o = crypto_kem ] && userandombytes=1
+	[ $o = crypto_sign ] && userandombytes=1
+	if [ $userandombytes = 1 ]
+	then
+	  trylibs="$top/$abi/lib/knownrandombytes.o $trylibs"
+	  measurelibs="$top/$abi/lib/fastrandombytes.o $measurelibs"
+	fi
   
         mkdir -p "$top/$target/work"
-        cp -pr "$implementationdir"/* "$top/$target/work"
+        cp -Lpr "$implementationdir"/* "$top/$target/work"
   
         cfiles=`ls "$top/$target/work" | grep '\.c$' || :`
         sfiles=`ls "$top/$target/work" | grep '\.[sS]$' || :`
@@ -350,8 +443,10 @@ do
         cp -p "$o/try.c" "$top/$target/work/try.$language"
         cp -p "$o/measure.c" "$top/$target/work/measure.$language"
         cp -p "try-anything.c" "$top/$target/work/try-anything.$language"
-        cp -p "try.h" "$top/$target/work/try.h"
         cp -p "measure-anything.c" "$top/$target/work/measure-anything.$language"
+
+        cp -p MACROS "$top/$target/work/MACROS"
+        cp -p PROTOTYPES.c "$top/$target/work/PROTOTYPES.c"
 
         (
           cd "$top/$target/work"
@@ -361,9 +456,10 @@ do
             echo ""
             echo "#include \"${op}.h\""
             echo ""
-            echo "$macros" | tr : '\012' | while read macro
+            egrep "${o}"'$|'"${o}"'\(|'"${o}"'_' < MACROS \
+            | sed "s/$o/$op/" | while read mop
             do
-              echo "#define ${o}${macro} ${op}${macro}"
+              echo "#define ${mop} ${mop}" | sed "s/$op/$o/"
             done
             echo "#define ${o}_PRIMITIVE \"${p}\""
             echo "#define ${o}_IMPLEMENTATION ${op}_IMPLEMENTATION"
@@ -380,17 +476,16 @@ do
             echo '#ifdef __cplusplus'
             echo 'extern "C" {'
             echo '#endif'
-            echo "$prototypes" | tr : '\012' | while read prototype
-            do
-              echo "extern int ${opi}${prototype};"
-            done
+            egrep "${o}"'$|'"${o}"'\(|'"${o}"'_' < PROTOTYPES.c \
+            | sed "s/$o/$opi/"
             echo '#ifdef __cplusplus'
             echo '}'
             echo '#endif'
             echo ""
-            echo "$macros" | tr : '\012' | while read macro
+            egrep "${o}"'$|'"${o}"'\(|'"${o}"'_' < MACROS \
+            | sed "s/$o/$opi/" | while read mopi
             do
-              echo "#define ${op}${macro} ${opi}${macro}"
+              echo "#define ${mopi} ${mopi}" | sed "s/$opi/$op/"
             done
             echo "#define ${op}_IMPLEMENTATION \"${implementationdir}\""
             echo "#ifndef ${opi}_VERSION"
@@ -429,7 +524,7 @@ do
             $compiler -DSUPERCOP -DSMALL \
               -I. -I"$top/$abi/include" \
               -o try try.$language try-anything.$language \
-              "$op.a" $libs 2>&1 || rm -f OK
+              "$op.a" $trylibs 2>&1 || rm -f OK
 	  ) | awk -v PREFIX="$version $shorthostname $abi $startdate $o $p fromcompiler $implementationdir $compilerword try.$language" '
 	    {
 	      if (NR > 25) { print PREFIX,"..."; exit }
@@ -438,13 +533,14 @@ do
 	  ' >&5
           [ -f OK ] || exit 0
   
-          if sh -c 'killafter 3600 ./try || exit $?' >../errors 2>&1
+          if sh -c 'killafter 3600 ./try || exit $?' >../outputs 2>../errors
           then
-            checksumsmall=`awk '{print $1}' < ../errors`
-            cycles=`awk '{print $2}' < ../errors`
-            checksumcycles=`awk '{print $3}' < ../errors`
-            cyclespersecond=`awk '{print $4}' < ../errors`
-            impl=`awk '{print $5}' < ../errors`
+            checksumsmall=`awk '{print $1}' < ../outputs`
+            cycles=`awk '{print $2}' < ../outputs`
+            checksumcycles=`awk '{print $3}' < ../outputs`
+            cyclespersecond=`awk '{print $4}' < ../outputs`
+            impl=`awk '{print $5}' < ../outputs`
+            rm ../outputs ../errors
           else
             echo "$version $shorthostname $abi $startdate $o $p tryfails $implementationdir $compilerword error $?" >&5
             cat ../errors \
@@ -452,6 +548,7 @@ do
             do
               echo "$version $shorthostname $abi $startdate $o $p tryfails $implementationdir $compilerword $err" >&5
             done
+            rm ../outputs ../errors
             exit 0
           fi
 
@@ -465,7 +562,7 @@ do
             $compiler -DSUPERCOP \
               -I. -I"$top/$abi/include" \
               -o try try.$language try-anything.$language \
-              "$op.a" $libs 2>&1 || rm -f OK
+              "$op.a" $trylibs 2>&1 || rm -f OK
 	  ) | awk -v PREFIX="$version $shorthostname $abi $startdate $o $p fromcompiler $implementationdir $compilerword try.$language" '
 	    {
 	      if (NR > 25) { print PREFIX,"..."; exit }
@@ -474,13 +571,14 @@ do
 	  ' >&5
           [ -f OK ] || exit 0
   
-          if sh -c 'killafter 3600 ./try || exit $?' >../errors 2>&1
+          if sh -c 'killafter 3600 ./try || exit $?' >../outputs 2>../errors
           then
-            checksumbig=`awk '{print $1}' < ../errors`
-            cycles=`awk '{print $2}' < ../errors`
-            checksumcycles=`awk '{print $3}' < ../errors`
-            cyclespersecond=`awk '{print $4}' < ../errors`
-            impl=`awk '{print $5}' < ../errors`
+            checksumbig=`awk '{print $1}' < ../outputs`
+            cycles=`awk '{print $2}' < ../outputs`
+            checksumcycles=`awk '{print $3}' < ../outputs`
+            cyclespersecond=`awk '{print $4}' < ../outputs`
+            impl=`awk '{print $5}' < ../outputs`
+            rm ../outputs ../errors
           else
             echo "$version $shorthostname $abi $startdate $o $p tryfails $implementationdir $compilerword error $?" >&5
             cat ../errors \
@@ -488,6 +586,7 @@ do
             do
               echo "$version $shorthostname $abi $startdate $o $p tryfails $implementationdir $compilerword $err" >&5
             done
+            rm ../outputs ../errors
             exit 0
           fi
 
@@ -508,7 +607,7 @@ do
               -DSUPERCOP -DLOOPS=1 \
               -I. -I"$top/$abi/include" \
               -o measure measure.$language measure-anything.$language \
-              "$op.a" $libs 2>&1 || rm -f OK
+              "$op.a" $measurelibs 2>&1 || rm -f OK
 	  ) | awk -v PREFIX="$version $shorthostname $abi $startdate $o $p fromcompiler $implementationdir $compilerword measure.$language" '
 	    {
 	      if (NR > 25) { print PREFIX,"..."; exit }
@@ -516,6 +615,8 @@ do
 	    }
 	  ' >&5
           [ -f OK ] || exit 0
+
+          compiledinfo "$version" "$shorthostname" "$abi" "$startdate" "$o" "$p" "$implementationdir" "$compilerword" "$opi" "$language"
 
 	  rm -rf ../compiled || exit 0
 	  mkdir ../compiled || exit 0
@@ -532,10 +633,52 @@ do
       done
     fi
 
+    if [ "$t1" = knownrandombytes ]
+    then
+      rm -f "$top/$abi/lib/knownrandombytes.o"
+      rm -rf "$top/$target/work"
+      mkdir -p "$top/$target/work"
+      cp knownrandombytes/* "$top/$target/work"
+
+      include="-I. -I"$top/$abi/include""
+
+      libs=`"oklibs-$abi"`
+      [ -f "$top/$abi/lib/libcryptopp.a" ] && libs="$top/$abi/lib/libcryptopp.a $libs"
+      [ -f "$top/$abi/lib/lib${project}.a" ] && libs="$top/$abi/lib/lib${project}.a $libs"
+
+      ( cd "$top/$target/work" \
+        && env abi="$abi" libs="$libs" include="$include" sh do \
+	&& cp lib/$abi/knownrandombytes.o "$top/$abi/lib/knownrandombytes.o"
+      )
+      exit 0
+    fi
+
+    if [ "$t1" = fastrandombytes ]
+    then
+      rm -f "$top/$abi/lib/fastrandombytes.o"
+      rm -rf "$top/$target/work"
+      mkdir -p "$top/$target/work"
+      cp fastrandombytes/* "$top/$target/work"
+
+      include="-I. -I"$top/$abi/include""
+
+      libs=`"oklibs-$abi"`
+      libs="$top/$abi/lib/cpucycles.o $libs"
+      libs="$top/$abi/lib/kernelrandombytes.o $libs"
+      [ -f "$top/$abi/lib/libcryptopp.a" ] && libs="$top/$abi/lib/libcryptopp.a $libs"
+      [ -f "$top/$abi/lib/lib${project}.a" ] && libs="$top/$abi/lib/lib${project}.a $libs"
+
+      ( cd "$top/$target/work" \
+        && env abi="$abi" libs="$libs" include="$include" sh do \
+	&& cp lib/$abi/fastrandombytes.o "$top/$abi/lib/fastrandombytes.o"
+      )
+      exit 0
+    fi
+
     if [ "$t1" = integrate ]
     then
-      grep "^$t2 " OPERATIONS \
-      | while read o macros prototypes
+      grep "^$t2$" OPERATIONS \
+      | while read o
       do
         p=$t3
         op="${o}_${p}"
@@ -566,8 +709,8 @@ do
 
     if [ "$t1" = measure1 -o "$t1" = measure2 -o "$t1" = measure3 ]
     then
-      grep "^$t2 " OPERATIONS \
-      | while read o macros prototypes
+      grep "^$t2$" OPERATIONS \
+      | while read o
       do
         p=$t3
         op="${o}_${p}"

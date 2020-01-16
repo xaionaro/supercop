@@ -3,10 +3,7 @@
 # Derived from the 'amd64-xmm6' implementation by Daniel Bernstein
 # Requires SSSE3 extensions (i.e. Core 2, Core i7, Atom)
 
-.data
-
-.globl R16
-.globl R08
+.section .rodata
 
 .p2align 6
 
@@ -15,10 +12,10 @@ R08: .byte 3, 0 ,1, 2, 7, 4, 5, 6, 11, 8, 9, 10, 15, 12, 13, 14
 
 .text
 .p2align 5
-.globl _ECRYPT_keystream_bytes
-.globl ECRYPT_keystream_bytes
-_ECRYPT_keystream_bytes:
-ECRYPT_keystream_bytes:
+.globl _crypto_stream_chacha8_amd64_ssse3_ECRYPT_keystream_bytes
+.globl crypto_stream_chacha8_amd64_ssse3_ECRYPT_keystream_bytes
+_crypto_stream_chacha8_amd64_ssse3_ECRYPT_keystream_bytes:
+crypto_stream_chacha8_amd64_ssse3_ECRYPT_keystream_bytes:
 mov %rsp,%r11
 and $31,%r11
 add $384,%r11
@@ -43,10 +40,10 @@ jmp ._start
 
 .text
 .p2align 5
-.globl _ECRYPT_decrypt_bytes
-.globl ECRYPT_decrypt_bytes
-_ECRYPT_decrypt_bytes:
-ECRYPT_decrypt_bytes:
+.globl _crypto_stream_chacha8_amd64_ssse3_ECRYPT_decrypt_bytes
+.globl crypto_stream_chacha8_amd64_ssse3_ECRYPT_decrypt_bytes
+_crypto_stream_chacha8_amd64_ssse3_ECRYPT_decrypt_bytes:
+crypto_stream_chacha8_amd64_ssse3_ECRYPT_decrypt_bytes:
 mov %rsp,%r11
 and $31,%r11
 add $384,%r11
@@ -68,10 +65,10 @@ jmp ._start
 
 .text
 .p2align 5
-.globl _ECRYPT_encrypt_bytes
-.globl ECRYPT_encrypt_bytes
-_ECRYPT_encrypt_bytes:
-ECRYPT_encrypt_bytes:
+.globl _crypto_stream_chacha8_amd64_ssse3_ECRYPT_encrypt_bytes
+.globl crypto_stream_chacha8_amd64_ssse3_ECRYPT_encrypt_bytes
+_crypto_stream_chacha8_amd64_ssse3_ECRYPT_encrypt_bytes:
+crypto_stream_chacha8_amd64_ssse3_ECRYPT_encrypt_bytes:
 mov %rsp,%r11
 and $31,%r11
 add $384,%r11
@@ -237,7 +234,7 @@ movdqa %xmm6,256(%rsp)
 
 ._mainloop1:
 
-movdqa R16, %xmm6 # load
+movdqa R16(%rip), %xmm6 # load
 
 paddd %xmm9,%xmm8
 
@@ -283,7 +280,7 @@ pslld $12,%xmm6
 
 pxor  %xmm6,%xmm13
 
-movdqa R08, %xmm6 # load
+movdqa R08(%rip), %xmm6 # load
 
 paddd %xmm9,%xmm8
 
@@ -333,7 +330,7 @@ movdqa %xmm14,272(%rsp)
 
 movdqa 256(%rsp),%xmm6
 
-movdqa R16, %xmm14  # load
+movdqa R16(%rip), %xmm14  # load
 
 paddd %xmm1,%xmm0
 
@@ -379,7 +376,7 @@ pslld $12,%xmm14
 
 pxor  %xmm14,%xmm5
 
-movdqa R08, %xmm14 # load 
+movdqa R08(%rip), %xmm14 # load 
 
 paddd %xmm1,%xmm0
 
@@ -425,7 +422,7 @@ pslld $7,%xmm14
 
 pxor  %xmm14,%xmm5
 
-movdqa R16, %xmm14 # load
+movdqa R16(%rip), %xmm14 # load
 
 paddd %xmm13,%xmm8
 
@@ -471,7 +468,7 @@ pslld $12,%xmm14
 
 pxor  %xmm14,%xmm1
 
-movdqa R08, %xmm14 # load
+movdqa R08(%rip), %xmm14 # load
 
 paddd %xmm13,%xmm8
 
@@ -521,7 +518,7 @@ movdqa %xmm6,256(%rsp)
 
 movdqa 272(%rsp),%xmm14
 
-movdqa R16, %xmm6 # load
+movdqa R16(%rip), %xmm6 # load
 
 paddd %xmm5,%xmm0
 
@@ -569,7 +566,7 @@ pslld $12,%xmm6
 
 pxor  %xmm6,%xmm9
 
-movdqa R08, %xmm6 # load
+movdqa R08(%rip), %xmm6 # load
 
 paddd %xmm5,%xmm0
 
@@ -1189,7 +1186,7 @@ pxor  %xmm0,%xmm3
 #pslld $16,%xmm3
 #psrld $16,%xmm4
 #pxor  %xmm4,%xmm3
-pshufb (R16), %xmm3
+pshufb R16(%rip), %xmm3
 
 paddd %xmm3,%xmm2
 
@@ -1214,7 +1211,7 @@ pxor  %xmm0,%xmm3
 pshufd $0x93,%xmm0,%xmm0
 
 #pxor  %xmm4,%xmm3
-pshufb (R08), %xmm3
+pshufb R08(%rip), %xmm3
 
 paddd %xmm3,%xmm2
 
@@ -1242,7 +1239,7 @@ pxor  %xmm0,%xmm3
 #pslld $16,%xmm3
 #psrld $16,%xmm4
 #pxor  %xmm4,%xmm3
-pshufb (R16), %xmm3
+pshufb R16(%rip), %xmm3
 
 paddd %xmm3,%xmm2
 
@@ -1267,7 +1264,7 @@ pxor  %xmm0,%xmm3
 pshufd $0x39,%xmm0,%xmm0
 
 #pxor  %xmm4,%xmm3
-pshufb (R08), %xmm3
+pshufb R08(%rip), %xmm3
 
 paddd %xmm3,%xmm2
 
@@ -1366,10 +1363,10 @@ jmp ._bytesbetween1and255
 
 .text
 .p2align 5
-.globl _ECRYPT_init
-.globl ECRYPT_init
-_ECRYPT_init:
-ECRYPT_init:
+.globl _crypto_stream_chacha8_amd64_ssse3_ECRYPT_init
+.globl crypto_stream_chacha8_amd64_ssse3_ECRYPT_init
+_crypto_stream_chacha8_amd64_ssse3_ECRYPT_init:
+crypto_stream_chacha8_amd64_ssse3_ECRYPT_init:
 mov %rsp,%r11
 and $31,%r11
 add $384,%r11
@@ -1382,10 +1379,10 @@ ret
 
 .text
 .p2align 5
-.globl _ECRYPT_keysetup
-.globl ECRYPT_keysetup
-_ECRYPT_keysetup:
-ECRYPT_keysetup:
+.globl _crypto_stream_chacha8_amd64_ssse3_ECRYPT_keysetup
+.globl crypto_stream_chacha8_amd64_ssse3_ECRYPT_keysetup
+_crypto_stream_chacha8_amd64_ssse3_ECRYPT_keysetup:
+crypto_stream_chacha8_amd64_ssse3_ECRYPT_keysetup:
 mov %rsp,%r11
 and $31,%r11
 add $384,%r11
@@ -1496,10 +1493,10 @@ ret
 
 .text
 .p2align 5
-.globl _ECRYPT_ivsetup
-.globl ECRYPT_ivsetup
-_ECRYPT_ivsetup:
-ECRYPT_ivsetup:
+.globl _crypto_stream_chacha8_amd64_ssse3_ECRYPT_ivsetup
+.globl crypto_stream_chacha8_amd64_ssse3_ECRYPT_ivsetup
+_crypto_stream_chacha8_amd64_ssse3_ECRYPT_ivsetup:
+crypto_stream_chacha8_amd64_ssse3_ECRYPT_ivsetup:
 mov %rsp,%r11
 and $31,%r11
 add $384,%r11

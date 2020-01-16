@@ -1,5 +1,5 @@
 /*
- * try-anything.c version 20140425
+ * try-anything.c version 20190729
  * D. J. Bernstein
  * Some portions adapted from TweetNaCl by Bernstein, Janssen, Lange, Schwabe.
  * Public domain.
@@ -13,6 +13,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/resource.h>
+#include "kernelrandombytes.h"
 #include "cpucycles.h"
 #include "crypto_uint8.h"
 #include "crypto_uint32.h"
@@ -110,14 +111,6 @@ static void increment(u8 *n)
                   ;
 }
 
-void randombytes(unsigned char *x,unsigned long long xlen)
-{
-  const static unsigned char randombytes_k[33] = "answer randombytes from crypto_*";
-  static unsigned char randombytes_n[8];
-  salsa20(x,xlen,randombytes_n,randombytes_k);
-  increment(randombytes_n);
-}
-
 static void testvector(unsigned char *x,unsigned long long xlen)
 {
   const static unsigned char testvector_k[33] = "generate inputs for test vectors";
@@ -169,7 +162,7 @@ void input_prepare(unsigned char *x2,unsigned char *x,unsigned long long xlen)
 void input_compare(const unsigned char *x2,const unsigned char *x,unsigned long long xlen,const char *fun)
 {
   if (memcmp(x2 - 16,x - 16,xlen + 32)) {
-    printf("%s overwrites input\n",fun);
+    fprintf(stderr,"%s overwrites input\n",fun);
     exit(111);
   }
 }
@@ -183,11 +176,11 @@ void output_prepare(unsigned char *x2,unsigned char *x,unsigned long long xlen)
 void output_compare(const unsigned char *x2,const unsigned char *x,unsigned long long xlen,const char *fun)
 {
   if (memcmp(x2 - 16,x - 16,16)) {
-    printf("%s writes before output\n",fun);
+    fprintf(stderr,"%s writes before output\n",fun);
     exit(111);
   }
   if (memcmp(x2 + xlen,x + xlen,16)) {
-    printf("%s writes after output\n",fun);
+    fprintf(stderr,"%s writes after output\n",fun);
     exit(111);
   }
 }
@@ -232,7 +225,7 @@ static void printnum(long long x)
 
 void fail(const char *why)
 {
-  printf("%s\n",why);
+  fprintf(stderr,"%s\n",why);
   exit(111);
 }
 
@@ -270,6 +263,8 @@ void limits()
 #endif
 }
 
+static unsigned char randombyte[1];
+
 int main()
 {
   long long i;
@@ -283,6 +278,7 @@ int main()
   cycles[1] = cpucycles();
   cyclespersecond = cpucycles_persecond();
 
+  kernelrandombytes(randombyte,1);
   preallocate();
   limits();
 

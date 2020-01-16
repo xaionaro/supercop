@@ -1,16 +1,8 @@
 #include <stdlib.h>
-#include "randombytes.h"
+#include "kernelrandombytes.h"
 #include "cpucycles.h"
 #include "crypto_aead.h"
-
-extern void printentry(long long,const char *,long long *,long long);
-extern unsigned char *alignedcalloc(unsigned long long);
-extern const char *primitiveimplementation;
-extern const char *implementationversion;
-extern const char *sizenames[];
-extern const long long sizes[];
-extern void allocate(void);
-extern void measure(void);
+#include "measure.h"
 
 const char *primitiveimplementation = crypto_aead_IMPLEMENTATION;
 const char *implementationversion = crypto_aead_VERSION;
@@ -40,7 +32,7 @@ void allocate(void)
   c = alignedcalloc(MAXTEST_BYTES + crypto_aead_ABYTES);
 }
 
-#define TIMINGS 15
+#define TIMINGS 7
 static long long cycles[TIMINGS + 1];
 
 void measure(void)
@@ -62,18 +54,22 @@ void measure(void)
         if (direction != 0) ++adlen;
         if (mlen > MAXTEST_BYTES) break;
         if (adlen > MAXTEST_BYTES) break;
-        randombytes(k,crypto_aead_KEYBYTES);
-        randombytes(nsec,crypto_aead_NSECBYTES);
-        randombytes(npub,crypto_aead_NPUBBYTES);
-        randombytes(m,mlen);
-        randombytes(ad,adlen);
-        randombytes(c,mlen + crypto_aead_ABYTES);
+        if (mlen > 64) if (mlen & 31) if (adlen != mlen) continue;
+        if (adlen > 64) if (adlen & 31) if (adlen != mlen) continue;
+        kernelrandombytes(k,crypto_aead_KEYBYTES);
+        kernelrandombytes(nsec,crypto_aead_NSECBYTES);
+        kernelrandombytes(npub,crypto_aead_NPUBBYTES);
+        kernelrandombytes(m,mlen);
+        kernelrandombytes(ad,adlen);
+        kernelrandombytes(c,mlen + crypto_aead_ABYTES);
         for (i = 0;i <= TIMINGS;++i) {
           cycles[i] = cpucycles();
           crypto_aead_encrypt(c,&clen,m,mlen,ad,adlen,nsec,npub,k);
         }
         for (i = 0;i < TIMINGS;++i) cycles[i] = cycles[i + 1] - cycles[i];
         printentry(1000000 * adlen + mlen,"encrypt_cycles",cycles,TIMINGS);
+        if (mlen > 64) if (mlen & 31) continue;
+        if (adlen > 64) if (adlen & 31) continue;
         for (i = 0;i <= TIMINGS;++i) {
           cycles[i] = cpucycles();
           crypto_aead_decrypt(m,&tlen,nsec,c,clen,ad,adlen,npub,k);
